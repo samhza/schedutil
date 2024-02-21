@@ -1,13 +1,12 @@
 package main
 
 import (
-	_ "embed"
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"image/color"
-	"io"
 	"log"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -21,19 +20,21 @@ const (
 	screenHeight = 480
 )
 
-type schedule []meeting
+type schedule struct {
+	Meetings []meeting `json:"meetings"`
+	Sections []string  `json:"indexes"`
+}
 
 type meeting struct {
-	day    rune
-	campus rune
-	start  int
-	end    int
-	name   string
+	Day      string `json:"day"`
+	Location string `json:"location"`
+	Start    int    `json:"start"`
+	End      int    `json:"end"`
+	Name     string `json:"name"`
 }
 
 type Game struct {
 	schedules     []schedule
-	sections      []string
 	current       int
 	down          time.Time
 	height, width float32
@@ -46,7 +47,7 @@ func (g *Game) Update() error {
 	if leftclick || inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonRight) {
 		ix, iy := ebiten.CursorPosition()
 		fx, fy := float32(ix), float32(iy)
-		for _, meet := range g.schedules[g.current] {
+		for _, meet := range g.schedules[g.current].Meetings {
 			x, y, width, height := g.meetgeo(meet)
 			text := "like"
 			if !leftclick {
@@ -58,15 +59,14 @@ func (g *Game) Update() error {
 		}
 	}
 	if inpututil.IsKeyJustPressed(ebiten.Key1) {
-		log.Printf(linkfmt, g.sections[g.current])
+		log.Printf(linkfmt, g.schedules[g.current].Sections[0])
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyF) {
 		f, err := os.OpenFile("favs.txt", os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
 		if err != nil {
 			log.Printf("opening favs file: %s\n", err)
 		}
-		f.WriteString(g.fmt_schedule(g.current))
-		f.Write([]byte{'\n'})
+		json.NewEncoder(f).Encode(g.schedules[g.current])
 		f.Close()
 	}
 	left := ebiten.IsKeyPressed(ebiten.KeyLeft)
@@ -76,7 +76,6 @@ func (g *Game) Update() error {
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyD) {
 		g.schedules = append(g.schedules[:g.current], g.schedules[g.current+1:]...)
-		g.sections = append(g.sections[:g.current], g.sections[g.current+1:]...)
 		g.current -= 1
 		if g.current < -1 {
 			g.current = 0
@@ -108,24 +107,24 @@ func (g *Game) Update() error {
 	return nil
 }
 
-func dayToN(day rune) int {
+func dayToN(day string) int {
 	switch day {
-	case 'M':
+	case "M":
 		return 0
-	case 'T':
+	case "T":
 		return 1
-	case 'W':
+	case "W":
 		return 2
-	case 'H':
+	case "H":
 		return 3
-	case 'F':
+	case "F":
 		return 4
 	}
-	panic(string(day))
+	panic(day)
 }
 
-func campusColor(campus rune) color.RGBA {
-	switch campus {
+func campusColor(campus string) color.RGBA {
+	switch campus[0] {
 	case '1':
 		return color.RGBA{0xff, 0xff, 0xcc, 0xff}
 	case '2':
@@ -144,19 +143,20 @@ func campusColor(campus rune) color.RGBA {
 func (g *Game) meetgeo(meet meeting) (x, y, width, height float32) {
 	var mpx float32 = (16 * 60) / g.height
 	width = g.width / float32(5)
-	height = float32(meet.end-meet.start) / mpx
-	y = float32(meet.start-7*60) / mpx
-	x = width * float32(dayToN(meet.day))
+	height = float32(meet.End-meet.Start) / mpx
+	y = float32(meet.Start-7*60) / mpx
+	x = width * float32(dayToN(meet.Day))
 	return
 }
+
 func (g *Game) Draw(screen *ebiten.Image) {
 	vector.DrawFilledRect(screen, 0, 0, g.width, g.height, color.RGBA{0xff, 0xff, 0xff, 0xff}, false)
 	sched := g.schedules[g.current]
-	for _, meet := range sched {
+	for _, meet := range sched.Meetings {
 		x, y, width, height := g.meetgeo(meet)
-		vector.DrawFilledRect(screen, x, y, width, height, campusColor(meet.campus), false)
-		sh := meet.start / 60
-		sm := meet.start % 60
+		vector.DrawFilledRect(screen, x, y, width, height, campusColor(meet.Location), false)
+		sh := meet.Start / 60
+		sm := meet.Start % 60
 		sp := "AM"
 		if sh >= 12 {
 			if sh != 12 {
@@ -164,8 +164,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			}
 			sp = "PM"
 		}
-		eh := meet.end / 60
-		em := meet.end % 60
+		eh := meet.End / 60
+		em := meet.End % 60
 		ep := "AM"
 		if eh >= 12 {
 			if eh != 12 {
@@ -173,10 +173,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			}
 			ep = "PM"
 		}
-		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%s\n%d:%02d%s-%d:%02d%s", meet.name, sh, sm, sp, eh, em, ep), int(x), int(y))
+		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%s\n%d:%02d%s-%d:%02d%s", meet.Name, sh, sm, sp, eh, em, ep), int(x), int(y))
 	}
 
-	ebitenutil.DebugPrint(screen, fmt.Sprintf("%d : %s", g.current, g.sections[g.current]))
+	ebitenutil.DebugPrint(screen, fmt.Sprintf("%d : %s", g.current, g.schedules[g.current].Sections[0]))
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -186,81 +186,29 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 }
 
 func fmt_meet(meet meeting) string {
-	return fmt.Sprintf("%c%c%d,%d=%s",
-		meet.day,
-		meet.campus,
-		meet.start,
-		meet.end,
-		meet.name)
-}
-
-//ggo:embed x.txt
-//var xxx string
-
-func (g *Game) fmt_schedule(i int) string {
-	sched := g.schedules[i]
-	sections := g.sections[i]
-	var sb strings.Builder
-	for i, meet := range sched {
-		sb.WriteString(fmt_meet(meet))
-		if i != len(sched)-1 {
-			sb.WriteByte(':')
-		}
-	}
-	sb.WriteByte('§')
-	sb.WriteString(sections)
-	return sb.String()
+	return fmt.Sprintf("%s%s%d,%d=%s",
+		meet.Day,
+		meet.Location,
+		meet.Start,
+		meet.End,
+		meet.Name)
 }
 
 func main() {
 	game := Game{}
-	input, err := io.ReadAll(os.Stdin)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	inputs := string(input)
-	// inputs := xxx
-	for _, line := range strings.Split(inputs, "\n") {
-		meets, sections, _ := strings.Cut(line, "§")
-		splat := strings.Split(meets, ":")
-		sched := make(schedule, len(splat))
-		valid := true
-		for i, meet := range splat {
-			var (
-				weekday, campus rune
-				start, end      int
-				name            string
-			)
-			_, err := fmt.Sscanf(meet, "%c%c%d,%d=", &weekday, &campus, &start, &end)
-			if err != nil {
-				log.Printf("Error scanning %s: %s", meet, err)
-				valid = false
-				break
-			}
-			if weekday == '-' {
-				valid = false
-				break
-			}
-			if end == -1 {
-				valid = false
-				break
-			}
-			_, name, _ = strings.Cut(meet, "=")
-			m := meeting{
-				day:    weekday,
-				campus: campus,
-				start:  start,
-				end:    end,
-				name:   name,
-			}
-			sched[i] = m
-		}
-		if !valid {
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		var sched schedule
+		if err := json.Unmarshal(scanner.Bytes(), &sched); err != nil {
+			log.Printf("Error parsing JSON: %s", err)
 			continue
 		}
-		game.sections = append(game.sections, sections)
 		game.schedules = append(game.schedules, sched)
 	}
+	if err := scanner.Err(); err != nil {
+		log.Fatal(err)
+	}
+
 	ebiten.SetWindowSize(screenWidth, screenHeight)
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	ebiten.SetWindowTitle("Schedules")

@@ -80,8 +80,8 @@ async def main():
             for sec in courses[cs]["sections"]:
                 if sec["index"].startswith("H") and cs == "01:640:152":
                     continue
-                if sec["index"] not in open_sections and sec["index"] not in registered:
-                    continue
+#                if sec["index"] not in open_sections and sec["index"] not in registered:
+#                    continue
                 meets = []
                 dont_add = False
                 for m in sec["meetingTimes"]:
@@ -118,9 +118,24 @@ async def main():
         #score = day_length(m)
         score = day_length(meets)
         #score += 100000000 * sum(n_transfers(m for m in meets if m.day == day) for day in DAYS)
+        wtv = {
+            'indexes': [x.index for x in sched],
+        }
+        wtv_meets = []
+        for meet in meets:
+            m = {
+                'day': meet.day,
+                'location': meet.location,
+                'start': meet.start,
+                'end': meet.end,
+                'name': meet.course_title,
+            }
+            wtv_meets.append(m)
+        wtv['meetings'] = wtv_meets
+                
         print(score, end=" ")
-        print(*[f"{x.day}{x.location}{x.start},{x.end}={x.course_title}" for x in meets], sep=':', end='§')
-        print(*[x.index for x in sched], sep=',')
+        json.dump(wtv, sys.stdout)
+        print("")
 
 def n_transfers(meets: List[Meet]):
     meets = sorted(meets, key=lambda x: x.start)
