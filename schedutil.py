@@ -16,7 +16,7 @@ import itertools
 courses = {}
 indexes = {}
 open_sections = {}
-SOC_URL = "http://sis.rutgers.edu/soc"
+SOC_URL = "https://classes.rutgers.edu/soc"
 SOC_API_URL = SOC_URL + "/api"
 
 CAC = '1'
